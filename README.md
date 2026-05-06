@@ -3,6 +3,7 @@
 Automated security scanner for GenLayer Intelligent Contracts. LLM validators run an 8-point audit and store structured reports on-chain with severity scores.
 
 **Chain:** GenLayer Bradbury Testnet (4221)
+**Live:** https://dulcet-babka-8c41fd.netlify.app/
 
 ---
 
@@ -77,7 +78,9 @@ cd frontend
 npm run dev
 ```
 
-Open http://localhost:5173. Connect MetaMask, paste contract, scan.
+Or use the live app: https://dulcet-babka-8c41fd.netlify.app/
+
+Connect MetaMask, paste contract, scan.
 
 ## GenLayer Primitives
 
