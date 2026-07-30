@@ -68,3 +68,32 @@ if (receipt?.txExecutionResultName === "FINISHED_WITH_ERROR" || receipt?.result 
 const newEnv = `VITE_CONTRACT_ADDRESS=${addr}\nPRIVATE_KEY=${privateKey.slice(2)}\n`;
 writeFileSync(join(__dirname, "frontend", ".env"), newEnv);
 console.log("Wrote address to frontend/.env");
+
+// Also write the COMMITTED build-time constant so static deploys (Vercel)
+// work without a gitignored .env. src/deployed.ts is tracked in git.
+const deployedTs = `/**
+ * Deployed AuditLens contract on GenLayer Bradbury Testnet (chain id 4221).
+ *
+ * This is a COMMITTED, build-time constant (not gitignored) so that static
+ * deployments (Vercel/Netlify) work without requiring a \`.env\` file to be
+ * present in the repo. \`deploy.mjs\` rewrites this file after a successful
+ * deploy, so the address baked into the build always matches the live contract.
+ */
+export const DEPLOYED_CONTRACT_ADDRESS = "${addr}";
+export const GENLAYER_CHAIN_ID = 4221; // Bradbury testnet
+export const EXPLORER_BASE = "https://explorer-bradbury.genlayer.com";
+`;
+writeFileSync(join(__dirname, "frontend", "src", "deployed.ts"), deployedTs);
+console.log("Wrote address to frontend/src/deployed.ts (committed)");
+
+// Update the README's deployed-contract section too.
+const readmePath = join(__dirname, "README.md");
+let readme = readFileSync(readmePath, "utf8");
+readme = readme.replace(/0x[a-fA-F0-9]{40}/g, addr);
+writeFileSync(readmePath, readme);
+console.log("Updated contract address in README.md");
+
+console.log("\nNext steps:");
+console.log("  1. git add frontend/src/deployed.ts README.md && git commit");
+console.log("  2. Push so Vercel rebuilds with the new address baked in");
+console.log("  3. cd frontend && npm run dev  (or wait for the Vercel deploy)");

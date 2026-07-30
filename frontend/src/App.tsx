@@ -6,8 +6,21 @@ import { TransactionStatus, ExecutionResult } from "genlayer-js/types";
 import { ReportViewer } from "./components/ReportViewer";
 import { TransactionModal } from "./components/TransactionModal";
 import { LandingPage } from "./components/LandingPage";
+import { DEPLOYED_CONTRACT_ADDRESS, GENLAYER_CHAIN_ID } from "./deployed";
 
-const CONTRACT_ADDRESS = import.meta.env.VITE_CONTRACT_ADDRESS || "";
+/**
+ * Contract address resolution (build time):
+ *   1. VITE_CONTRACT_ADDRESS env var (if set in Vercel dashboard) — override
+ *   2. DEPLOYED_CONTRACT_ADDRESS from committed src/deployed.ts — fallback
+ *
+ * `src/deployed.ts` is committed (not gitignored) so static deploys work
+ * even when no `.env` is present in the repo. `deploy.mjs` keeps it in sync
+ * with the latest deploy.
+ */
+const CONTRACT_ADDRESS =
+  (import.meta.env.VITE_CONTRACT_ADDRESS as string | undefined) ||
+  DEPLOYED_CONTRACT_ADDRESS ||
+  "";
 
 const readClient = createClient({ chain: testnetBradbury });
 
@@ -25,12 +38,20 @@ interface AuditResult {
   summary: string;
 }
 
+interface Verification {
+  verifier: string;
+  score: number;
+}
+
 interface Report {
   id: string;
   contract_name: string;
   auditor: string;
+  source_hash?: string;
   result: AuditResult;
   verified: boolean;
+  verification_count?: number;
+  verifications?: Verification[];
 }
 
 interface EIP1193Provider {
@@ -139,19 +160,20 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
   const ensureChain = useCallback(async () => {
     const eth = (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
     if (!eth) return;
+    const chainHex = "0x" + GENLAYER_CHAIN_ID.toString(16);
     const currentChain = (await eth.request({ method: "eth_chainId" })) as string;
-    if (currentChain === "0x107d") return;
+    if (currentChain.toLowerCase() === chainHex.toLowerCase()) return;
     try {
       await eth.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: "0x107d" }],
+        params: [{ chainId: chainHex }],
       });
     } catch (switchError: any) {
       if (switchError.code === 4902) {
         await eth.request({
           method: "wallet_addEthereumChain",
           params: [{
-            chainId: "0x107d",
+            chainId: chainHex,
             chainName: "Genlayer Bradbury Testnet",
             nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
             rpcUrls: ["https://rpc-bradbury.genlayer.com"],

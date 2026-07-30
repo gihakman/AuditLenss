@@ -14,12 +14,20 @@ interface AuditResult {
   summary: string;
 }
 
+interface Verification {
+  verifier: string;
+  score: number;
+}
+
 interface Report {
   id: string;
   contract_name: string;
   auditor: string;
+  source_hash?: string;
   result: AuditResult;
   verified: boolean;
+  verification_count?: number;
+  verifications?: Verification[];
 }
 
 const sevConfig: Record<string, { bg: string; color: string }> = {
@@ -68,6 +76,21 @@ export const ReportViewer: React.FC<{
         <div style={{ fontFamily: "var(--sans)", fontSize: 13, lineHeight: 1.7, color: "var(--text)" }}>{report.result?.summary}</div>
       </div>
 
+      {/* Authenticated source binding */}
+      {report.source_hash && (
+        <div style={{ margin: "0 24px 16px", padding: 14, borderRadius: 8, border: "1px solid var(--border)", background: "var(--card-bg)" }}>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: "1px", marginBottom: 8, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "var(--accent)" }}>🔒</span> Source Binding (sha256)
+          </div>
+          <div style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-h)", wordBreak: "break-all", lineHeight: 1.5 }}>
+            {report.source_hash}
+          </div>
+          <div style={{ fontFamily: "var(--sans)", fontSize: 11, color: "var(--text-dim)", marginTop: 8, lineHeight: 1.5 }}>
+            Report is bound to the exact contract bytes audited. Re-verification re-derives this hash and compares the actual findings set — not just the score.
+          </div>
+        </div>
+      )}
+
       {/* Findings */}
       {report.result?.findings.map((finding, i) => (
         <div
@@ -101,13 +124,21 @@ export const ReportViewer: React.FC<{
       {/* Verify button */}
       <div style={{ margin: "0 24px 24px" }}>
         {report.verified ? (
-          <span style={{ fontFamily: "var(--mono)", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 6, background: "var(--accent-bg)", border: "1px solid var(--accent-border)", color: "var(--green)" }}>
-            ✓ Verified
-          </span>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 12, display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 16px", borderRadius: 6, background: "var(--accent-bg)", border: "1px solid var(--accent-border)", color: "var(--green)" }}>
+              ✓ Verified — findings matched on re-audit
+            </span>
+            {report.verification_count && report.verification_count > 0 && (
+              <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)" }}>
+                {report.verification_count} verification{report.verification_count === 1 ? "" : "s"}
+              </span>
+            )}
+          </div>
         ) : (
           <button
             onClick={() => onVerify?.(report.id)}
             disabled={verifying}
+            title="Re-runs the audit and compares the actual findings set (categories, severities, descriptions) — not just the aggregate score."
             style={{
               fontFamily: "var(--mono)", fontSize: 12, fontWeight: 600, padding: "10px 20px",
               border: "1px solid var(--accent-border)", borderRadius: 6, background: "var(--accent-bg)",
@@ -117,7 +148,7 @@ export const ReportViewer: React.FC<{
             }}
           >
             {verifying ? <span style={{ display: "inline-block", animation: "spin 1s linear infinite", width: 12, height: 12, border: "2px solid var(--accent-border)", borderTopColor: "var(--accent)", borderRadius: "50%" }} /> : "▸"}
-            {verifying ? "Verifying..." : "Verify Report"}
+            {verifying ? "Verifying findings..." : "Verify Report"}
           </button>
         )}
       </div>

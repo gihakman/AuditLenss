@@ -1,5 +1,6 @@
 # Python
 venv/
+.venv/
 .env
 __pycache__/
 .pytest_cache/
@@ -32,6 +33,12 @@ Thumbs.db
 
 # Build artifacts
 vite.err
+frontend/.vite/
+
+# Root-level deploy-only node artifacts (genlayer-js installed at repo root
+# so deploy.mjs can resolve it; not part of the app and not committed)
+/package.json
+/package-lock.json
 
 # Design references
 New folder/

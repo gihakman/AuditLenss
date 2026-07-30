@@ -26,6 +26,36 @@ def _sanitize_json(json_str: str) -> dict:
     return json.loads(s)
 
 
+def _source_hash(contract_source: str) -> str:
+    """
+    Authenticated binding between a report and the exact contract source it
+    audited. Validators hash the canonicalized source bytes so that the on-chain
+    report is tamper-evident: any change to the code produces a different hash,
+    and a stored report can always be re-derived against the same hash.
+    """
+    import hashlib
+
+    return "0x" + hashlib.sha256(contract_source.encode("utf-8")).hexdigest()
+
+
+def _findings_signature(audit_result: dict) -> str:
+    """
+    A deterministic, human-readable projection of the *findings* (not the score)
+    used to compare two audits. Each finding is reduced to its category +
+    severity + a normalized description, then sorted so order does not matter.
+    This is what re-verification compares, instead of only an aggregate score.
+    """
+    findings = audit_result.get("findings") or []
+    rows = []
+    for f in findings:
+        category = str(f.get("category", "")).strip().lower()
+        severity = str(f.get("severity", "")).strip().lower()
+        desc = " ".join(str(f.get("description", "")).split()).lower()
+        rows.append(f"{category}|{severity}|{desc}")
+    rows.sort()
+    return "\n".join(rows)
+
+
 class AuditLens(gl.Contract):
     """
     Automated Security Scanner for GenLayer Intelligent Contracts.
@@ -44,6 +74,8 @@ class AuditLens(gl.Contract):
     def submit_contract(self, contract_source: str, contract_name: str) -> int:
         """
         Submit a contract for automated security audit.
+        Binds the report to a sha256 hash of the exact source audited, so the
+        stored findings are always reproducible against that source.
         Returns the report_id.
         """
         if not contract_source or not contract_name:
@@ -51,6 +83,8 @@ class AuditLens(gl.Contract):
         reports = json.loads(self.reports_json)
         if len(reports) >= MAX_REPORTS:
             raise ValueError("Report limit reached")
+
+        source_hash = _source_hash(contract_source)
 
         def _audit() -> str:
             prompt = f"""Analyze this GenLayer Intelligent Contract for security vulnerabilities.
@@ -100,10 +134,13 @@ Return ONLY valid JSON with no markdown fences, no trailing commas, and no comme
         report = {
             "id": str(len(reports)),
             "contract_name": contract_name,
+            "source_hash": source_hash,
             "contract_source": contract_source,
             "auditor": str(gl.message.sender_address),
             "result": audit_result,
             "verified": False,
+            "verification_count": 0,
+            "verifications": [],
         }
         reports.append(report)
         self.reports_json = json.dumps(reports)
@@ -113,7 +150,13 @@ Return ONLY valid JSON with no markdown fences, no trailing commas, and no comme
     def verify_report(self, report_id: int) -> None:
         """
         Re-run the audit to verify a previous report.
-        On success, mark it verified and boost auditor reputation.
+
+        Verification compares the ACTUAL FINDINGS, not just the aggregate score:
+        the re-audit's findings must be semantically equivalent to the original
+        report's findings (same categories + severities + descriptions, order
+        independent). The score is kept as a secondary guard. On success the
+        report is marked verified, the verifier is recorded, and the original
+        auditor's reputation is boosted.
         """
         reports = json.loads(self.reports_json)
         idx = int(report_id)
@@ -128,9 +171,16 @@ Return ONLY valid JSON with no markdown fences, no trailing commas, and no comme
             raise ValueError("Auditor cannot verify their own report")
 
         contract_source = report["contract_source"]
-        original_score = report["result"].get("overall_score", -1)
+        original_result = report["result"]
+        original_score = original_result.get("overall_score", -1)
         if isinstance(original_score, str):
             original_score = int(original_score)
+
+        # Re-derive the authenticated source hash and assert it still matches
+        # the bytes we are about to re-audit. This binds the verification to the
+        # exact source the original report was issued against.
+        if _source_hash(contract_source) != report.get("source_hash", ""):
+            raise ValueError("Source hash mismatch: report is not reproducible")
 
         def _reaudit() -> str:
             prompt = f"""Re-audit this GenLayer Intelligent Contract for security vulnerabilities.
@@ -170,12 +220,57 @@ Re-check all security categories and return ONLY valid JSON:
         if isinstance(verify_score, str):
             verify_score = int(verify_score)
 
-        if abs(int(verify_score) - int(original_score)) > SCORE_TOLERANCE:
+        # Primary check: the two finding sets must describe the same issues.
+        # Equivalence-principle consensus over the actual findings projection
+        # (categories + severities + descriptions), rather than a single score.
+        original_findings = _findings_signature(original_result)
+        new_findings = _findings_signature(verify_result)
+
+        def _compare_findings() -> str:
+            prompt = f"""You are comparing two security audit findings sets for the SAME contract.
+
+Audit A (original report findings):
+{original_findings}
+
+Audit B (re-verification findings):
+{new_findings}
+
+Two audits are equivalent if every finding in A has a matching finding in B
+(same category, same severity, semantically the same description) and vice
+versa. Extra or missing findings mean they are NOT equivalent. Line numbers and
+wording differences that do not change the meaning are acceptable.
+
+Reply with ONLY a JSON object:
+{{"equivalent": true|false, "reason": "one short sentence"}}
+"""
+            return gl.nondet.exec_prompt(prompt)
+
+        comparison_str = gl.eq_principle.prompt_comparative(
+            _compare_findings,
+            principle="The 'equivalent' boolean must be the same. The reason must be semantically similar.",
+        )
+        comparison = _sanitize_json(comparison_str)
+        equivalent = comparison.get("equivalent", False)
+        if isinstance(equivalent, str):
+            equivalent = equivalent.strip().lower() in ("true", "yes", "1")
+
+        # Secondary guard: aggregate score must also be nearby.
+        score_ok = abs(int(verify_score) - int(original_score)) <= SCORE_TOLERANCE
+
+        if not equivalent or not score_ok:
             raise ValueError(
-                f"Verification failed: re-audit score {verify_score} differs from original {original_score}"
+                "Verification failed: findings are not equivalent"
+                + ("" if score_ok else f" (score {verify_score} vs {original_score})")
             )
 
         report["verified"] = True
+        report["verification_count"] = int(report.get("verification_count", 0)) + 1
+        report["verifications"] = report.get("verifications", []) + [
+            {
+                "verifier": str(gl.message.sender_address),
+                "score": int(verify_score),
+            }
+        ]
         reports[idx] = report
         self.reports_json = json.dumps(reports)
 
