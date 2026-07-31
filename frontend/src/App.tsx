@@ -188,11 +188,29 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
         params: [{ chainId: chainHex }],
       });
     } catch (switchError: any) {
-      if (switchError.code === 4902) {
+      // Chain not yet added to MetaMask (code 4902), or MetaMask doesn't
+      // recognize the chain id ("Unrecognized chain ID" / code -32603 etc).
+      // In all those cases, add the chain then switch to it.
+      const msg = String(switchError?.message || "").toLowerCase();
+      const unrecognized =
+        switchError?.code === 4902 ||
+        switchError?.code === -32603 ||
+        switchError?.code === -32002 ||
+        /unrecognized chain|chain .* not|resource not found|does not exist/i.test(msg);
+      if (unrecognized) {
         await eth.request({
           method: "wallet_addEthereumChain",
           params: [chainParams],
         });
+        // After adding, switch to it (some wallets add but don't auto-switch).
+        try {
+          await eth.request({
+            method: "wallet_switchEthereumChain",
+            params: [{ chainId: chainHex }],
+          });
+        } catch {
+          /* added; wallet may already be on it */
+        }
       } else {
         throw switchError;
       }
