@@ -1,4 +1,5 @@
 import React from "react";
+import { EXPLORER_BASE } from "../deployed";
 
 const txData = {
   hash: "0xa77f85e1...14377a14",
@@ -135,7 +136,7 @@ export const TransactionModal: React.FC<{
           </div>
 
           {/* Explorer link */}
-          <a href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 24, padding: "14px 20px", borderRadius: 8, border: "1px solid var(--accent-border)", background: "var(--accent-bg)", cursor: "pointer", fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)", textDecoration: "none", textAlign: "center", transition: "background 0.2s" }}>
+          <a href={`${EXPLORER_BASE}/tx/${txHash}`} target="_blank" rel="noopener noreferrer" style={{ display: "block", marginTop: 24, padding: "14px 20px", borderRadius: 8, border: "1px solid var(--accent-border)", background: "var(--accent-bg)", cursor: "pointer", fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)", textDecoration: "none", textAlign: "center", transition: "background 0.2s" }}>
             View on Explorer →
           </a>
         </div>

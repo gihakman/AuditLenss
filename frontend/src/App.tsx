@@ -1,12 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import Editor from "@monaco-editor/react";
 import { createClient } from "genlayer-js";
-import { testnetBradbury } from "genlayer-js/chains";
+import { testnetBradbury, studionet } from "genlayer-js/chains";
 import { TransactionStatus, ExecutionResult } from "genlayer-js/types";
 import { ReportViewer } from "./components/ReportViewer";
 import { TransactionModal } from "./components/TransactionModal";
 import { LandingPage } from "./components/LandingPage";
-import { DEPLOYED_CONTRACT_ADDRESS, GENLAYER_CHAIN_ID } from "./deployed";
+import { DEPLOYED_CONTRACT_ADDRESS, DEPLOYED_NETWORK, GENLAYER_CHAIN_ID, EXPLORER_BASE, NETWORK_LABEL } from "./deployed";
 
 /**
  * Contract address resolution (build time):
@@ -22,7 +22,10 @@ const CONTRACT_ADDRESS =
   DEPLOYED_CONTRACT_ADDRESS ||
   "";
 
-const readClient = createClient({ chain: testnetBradbury });
+/** Active GenLayer chain, selected by DEPLOYED_NETWORK in deployed.ts. */
+const CHAIN = DEPLOYED_NETWORK === "studionet" ? studionet : testnetBradbury;
+
+const readClient = createClient({ chain: CHAIN });
 
 interface Finding {
   category: string;
@@ -163,6 +166,22 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
     const chainHex = "0x" + GENLAYER_CHAIN_ID.toString(16);
     const currentChain = (await eth.request({ method: "eth_chainId" })) as string;
     if (currentChain.toLowerCase() === chainHex.toLowerCase()) return;
+    const isStudio = DEPLOYED_NETWORK === "studionet";
+    const chainParams = isStudio
+      ? {
+          chainId: chainHex,
+          chainName: "Genlayer Studionet",
+          nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+          rpcUrls: ["https://studio.genlayer.com/api"],
+          blockExplorerUrls: ["https://genlayer-explorer.vercel.app"],
+        }
+      : {
+          chainId: chainHex,
+          chainName: "Genlayer Bradbury Testnet",
+          nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+          rpcUrls: ["https://rpc-bradbury.genlayer.com"],
+          blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
+        };
     try {
       await eth.request({
         method: "wallet_switchEthereumChain",
@@ -172,13 +191,7 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
       if (switchError.code === 4902) {
         await eth.request({
           method: "wallet_addEthereumChain",
-          params: [{
-            chainId: chainHex,
-            chainName: "Genlayer Bradbury Testnet",
-            nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-            rpcUrls: ["https://rpc-bradbury.genlayer.com"],
-            blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
-          }],
+          params: [chainParams],
         });
       } else {
         throw switchError;
@@ -201,7 +214,7 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
       const addr = accounts[0];
       setAccount(addr);
       const client = createClient({
-        chain: testnetBradbury,
+        chain: CHAIN,
         account: addr as `0x${string}`,
         provider: eth,
       });
@@ -255,14 +268,18 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
       }) as any;
       const txHashStr = String(hash);
       setTxHash(txHashStr);
-      // Wait for ACCEPTED (not FINALIZED — finalization takes ~27min on Bradbury)
+      // Studionet (simulator) finalizes in seconds -> wait FINALIZED so the
+      // report is actually stored and readable. Bradbury finalization takes
+      // ~27min, so wait ACCEPTED there and let the user check the explorer.
+      const waitStatus = DEPLOYED_NETWORK === "studionet"
+        ? TransactionStatus.FINALIZED
+        : TransactionStatus.ACCEPTED;
       const receipt = await readClient.waitForTransactionReceipt({
         hash: txHashStr as `0x${string}` & { length: 66 },
-        status: TransactionStatus.ACCEPTED,
+        status: waitStatus,
       });
       if (receipt.txExecutionResultName === ExecutionResult.FINISHED_WITH_RETURN) {
-        // Transaction accepted — report will be readable once finalized
-        // Try fetching reports; if not finalized yet, they may not appear yet
+        // Report is stored once finalized; fetch what's readable now.
         await fetchReports();
       } else {
         setError(`Transaction status: ${receipt.txExecutionResultName}. Check explorer for details.`);
@@ -287,10 +304,13 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
         args: [Number(id)],
         value: BigInt(0),
       }) as any;
-      // Wait for ACCEPTED (not FINALIZED — finalization takes ~27min on Bradbury)
+      // Studionet finalizes fast -> FINALIZED; Bradbury -> ACCEPTED (~27min to finalize).
+      const verifyWaitStatus = DEPLOYED_NETWORK === "studionet"
+        ? TransactionStatus.FINALIZED
+        : TransactionStatus.ACCEPTED;
       await readClient.waitForTransactionReceipt({
         hash: String(hash) as `0x${string}` & { length: 66 },
-        status: TransactionStatus.ACCEPTED,
+        status: verifyWaitStatus,
       });
       await fetchReports();
     } catch (e: any) {
@@ -315,7 +335,7 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
           <span style={{ fontFamily: "var(--mono)", fontSize: 16, fontWeight: 700, color: "var(--text-h)" }}>AuditLens</span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)" }}>Bradbury Testnet</span>
+          <span style={{ fontFamily: "var(--mono)", fontSize: 11, color: "var(--text-dim)" }}>{NETWORK_LABEL}</span>
           <button onClick={connectWallet} style={{ fontFamily: "var(--mono)", fontSize: 12, padding: "8px 16px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-h)", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, transition: "border-color 0.2s" }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: account ? "var(--green)" : "var(--red)", boxShadow: account ? "0 0 6px var(--green)" : "none" }} />
             {account ? `${account.slice(0, 6)}...${account.slice(-4)}` : "Connect Wallet"}
@@ -373,7 +393,7 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
               {txHash && (
                 <div style={{ margin: "0 24px 16px" }}>
                   <a
-                    href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`}
+                    href={`${EXPLORER_BASE}/tx/${txHash}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{
@@ -415,7 +435,7 @@ function ScannerApp({ onBack }: { onBack: () => void }) {
                 <strong style={{ color: "var(--accent)" }}>Check the explorer for status.</strong>
               </div>
               <a
-                href={`https://explorer-bradbury.genlayer.com/tx/${txHash}`}
+                href={`${EXPLORER_BASE}/tx/${txHash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 style={{

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from "react";
+import { NETWORK_LABEL, EXPLORER_BASE, GENLAYER_CHAIN_ID } from "../deployed";
 
 function GridBg() {
   return (
@@ -11,7 +12,7 @@ function GridBg() {
 
 const allLines = [
   { text: "$ auditlens scan ./contracts/vault.py", type: "prompt", delay: 0 },
-  { text: "▸ Connecting to GenLayer Bradbury testnet...", type: "normal", delay: 600 },
+  { text: `▸ Connecting to GenLayer ${NETWORK_LABEL}...`, type: "normal", delay: 600 },
   { text: "▸ Submitting to LLM validator consensus...", type: "normal", delay: 1200 },
   { text: "▸ Validator 1/5 — analyzing 8 vulnerability classes", type: "normal", delay: 1800 },
   { text: "▸ Validator 3/5 — cross-checking findings", type: "normal", delay: 2400 },
@@ -97,7 +98,7 @@ export const LandingPage: React.FC<{
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 32 }}>
           <a style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--text-dim)", textDecoration: "none", letterSpacing: "0.5px", textTransform: "uppercase", cursor: "pointer" }}>Docs</a>
-          <a href="https://explorer-bradbury.genlayer.com" target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--text-dim)", textDecoration: "none", letterSpacing: "0.5px", textTransform: "uppercase", cursor: "pointer" }}>Explorer</a>
+          <a href={EXPLORER_BASE} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 13, color: "var(--text-dim)", textDecoration: "none", letterSpacing: "0.5px", textTransform: "uppercase", cursor: "pointer" }}>Explorer</a>
           <button onClick={onToggleTheme} style={{ fontFamily: "var(--mono)", fontSize: 14, padding: "6px 12px", borderRadius: 6, border: "1px solid var(--border)", background: "transparent", color: "var(--text-dim)", cursor: "pointer" }}>
             {theme === "dark" ? "☀" : "☾"}
           </button>
@@ -113,7 +114,7 @@ export const LandingPage: React.FC<{
         <div style={{ position: "relative", zIndex: 1 }}>
           <div style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--accent)", letterSpacing: "2px", textTransform: "uppercase", marginBottom: 24, display: "flex", alignItems: "center", gap: 8, padding: "6px 16px", border: "1px solid var(--accent-border)", borderRadius: 100, background: "var(--accent-bg)" }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: "var(--green)", boxShadow: "0 0 8px var(--green)" }} />
-            Live on GenLayer Bradbury Testnet
+            Live on GenLayer {NETWORK_LABEL}
           </div>
           <h1 style={{ fontFamily: "var(--heading)", fontSize: "clamp(48px, 7vw, 88px)", fontWeight: 700, color: "var(--text-h)", lineHeight: 1.05, letterSpacing: "-3px", margin: "0 0 28px", maxWidth: 900 }}>
             Trustless security<br />
@@ -182,7 +183,7 @@ export const LandingPage: React.FC<{
       {/* Footer */}
       <footer style={{ padding: "32px 48px", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-dim)" }}>© 2026 AuditLens — Built on GenLayer</span>
-        <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-dim)" }}>Bradbury Testnet · Chain 4221</span>
+        <span style={{ fontFamily: "var(--mono)", fontSize: 12, color: "var(--text-dim)" }}>{NETWORK_LABEL} · Chain {GENLAYER_CHAIN_ID}</span>
       </footer>
     </div>
   );

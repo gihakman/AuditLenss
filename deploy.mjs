@@ -1,10 +1,20 @@
 import { createClient, createAccount } from "genlayer-js";
-import { testnetBradbury } from "genlayer-js/chains";
+import { testnetBradbury, studionet } from "genlayer-js/chains";
 import { readFileSync, writeFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Target network: "studionet" (default, hosted simulator, fast, built-in faucet)
+// or "bradbury" (real validators, slow finalization). Override with NETWORK env.
+const NETWORK = (process.env.NETWORK || "studionet").toLowerCase();
+const CHAIN = NETWORK === "bradbury" ? testnetBradbury : studionet;
+const CHAIN_ID = NETWORK === "bradbury" ? 4221 : 61999;
+const EXPLORER = NETWORK === "bradbury"
+  ? "https://explorer-bradbury.genlayer.com"
+  : "https://genlayer-explorer.vercel.app";
+const NETWORK_LABEL = NETWORK === "bradbury" ? "Bradbury Testnet" : "Studionet";
 
 // Read private key from frontend/.env
 const envText = readFileSync(join(__dirname, "frontend", ".env"), "utf8");
@@ -21,8 +31,9 @@ if (!privateKey.startsWith("0x")) {
 
 const account = createAccount(privateKey);
 console.log("Deployer:", account.address);
+console.log("Network:", NETWORK_LABEL, `(chain id ${CHAIN_ID})`);
 
-const client = createClient({ chain: testnetBradbury });
+const client = createClient({ chain: CHAIN, account });
 
 const code = readFileSync(join(__dirname, "contracts", "auditlens.py"), "utf8");
 
@@ -35,7 +46,7 @@ const txHash = await client.deployContract({
 });
 
 console.log("Tx hash:", txHash);
-console.log("Explorer:", `https://explorer-bradbury.genlayer.com/tx/${txHash}`);
+console.log("Explorer:", `${EXPLORER}/tx/${txHash}`);
 
 console.log("Waiting for receipt (30-120s)...");
 const receipt = await client.waitForTransactionReceipt({
@@ -60,8 +71,7 @@ console.log("Execution:", receipt?.txExecutionResultName ?? receipt?.result_name
 
 if (receipt?.txExecutionResultName === "FINISHED_WITH_ERROR" || receipt?.result === 6) {
   console.warn("\nWARNING: Contract deployed but execution finished with error.");
-  console.warn("This may be due to testnet instability or contract version mismatch.");
-  console.warn("Check the explorer for details:", `https://explorer-bradbury.genlayer.com/tx/${txHash}`);
+  console.warn("Check the explorer for details:", `${EXPLORER}/tx/${txHash}`);
   console.warn("Proceeding anyway - contract address saved.");
 }
 
@@ -72,28 +82,29 @@ console.log("Wrote address to frontend/.env");
 // Also write the COMMITTED build-time constant so static deploys (Vercel)
 // work without a gitignored .env. src/deployed.ts is tracked in git.
 const deployedTs = `/**
- * Deployed AuditLens contract on GenLayer Bradbury Testnet (chain id 4221).
+ * Deployed AuditLens contract on GenLayer.
  *
  * This is a COMMITTED, build-time constant (not gitignored) so that static
  * deployments (Vercel/Netlify) work without requiring a \`.env\` file to be
- * present in the repo. \`deploy.mjs\` rewrites this file after a successful
- * deploy, so the address baked into the build always matches the live contract.
+ * present in the repo. \`deploy.mjs\` / \`scripts/deploy.py\` rewrite this file
+ * after a successful deploy, so the address baked into the build always matches
+ * the live contract.
+ *
+ * NETWORK: "studionet" | "bradbury"
+ *   - studionet: hosted simulator (chain id 61999), built-in faucet, exposes
+ *     full validator stderr for debugging. Best for demos.
+ *   - bradbury:  real validators (chain id 4221). Slower finalization.
  */
+export const DEPLOYED_NETWORK = "${NETWORK}" as "studionet" | "bradbury";
 export const DEPLOYED_CONTRACT_ADDRESS = "${addr}";
-export const GENLAYER_CHAIN_ID = 4221; // Bradbury testnet
-export const EXPLORER_BASE = "https://explorer-bradbury.genlayer.com";
+export const GENLAYER_CHAIN_ID = ${CHAIN_ID}; // ${NETWORK_LABEL}
+export const EXPLORER_BASE = "${EXPLORER}";
+export const NETWORK_LABEL = DEPLOYED_NETWORK === "studionet" ? "Studionet" : "Bradbury Testnet";
 `;
 writeFileSync(join(__dirname, "frontend", "src", "deployed.ts"), deployedTs);
 console.log("Wrote address to frontend/src/deployed.ts (committed)");
 
-// Update the README's deployed-contract section too.
-const readmePath = join(__dirname, "README.md");
-let readme = readFileSync(readmePath, "utf8");
-readme = readme.replace(/0x[a-fA-F0-9]{40}/g, addr);
-writeFileSync(readmePath, readme);
-console.log("Updated contract address in README.md");
-
 console.log("\nNext steps:");
-console.log("  1. git add frontend/src/deployed.ts README.md && git commit");
+console.log("  1. git add frontend/src/deployed.ts && git commit");
 console.log("  2. Push so Vercel rebuilds with the new address baked in");
 console.log("  3. cd frontend && npm run dev  (or wait for the Vercel deploy)");

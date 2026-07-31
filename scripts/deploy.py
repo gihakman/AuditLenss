@@ -1,8 +1,10 @@
 """
 AuditLens Deployment Script (Python)
 -------------------------------------
-Deploys the AuditLens contract to the SAME chain the frontend talks to:
-GenLayer Bradbury Testnet (chain id 4221).
+Deploys the AuditLens contract to the SAME chain the frontend talks to.
+Defaults to GenLayer Studionet (chain id 61999, hosted simulator, fast,
+built-in faucet); set NETWORK=bradbury to target Bradbury (chain id 4221,
+real validators, slow finalization).
 
 Use this OR deploy.mjs — they target the same chain and both write the
 resulting contract address into frontend/.env and frontend/src/deployed.ts.
@@ -28,21 +30,31 @@ import os
 from pathlib import Path
 
 from genlayer_py.client import GenLayerClient
-from genlayer_py.chains import testnet_bradbury
+from genlayer_py.chains import testnet_bradbury, studionet
 from genlayer_py.types import TransactionStatus
 from eth_account import Account
 
-EXPLORER = "https://explorer-bradbury.genlayer.com"
+# Target network: "studionet" (default) or "bradbury". Override with NETWORK env.
+NETWORK = os.environ.get("NETWORK", "studionet").lower()
+if NETWORK == "bradbury":
+    CHAIN = testnet_bradbury
+    CHAIN_ID = 4221
+    EXPLORER = "https://explorer-bradbury.genlayer.com"
+    NETWORK_LABEL = "Bradbury Testnet"
+else:
+    CHAIN = studionet
+    CHAIN_ID = 61999
+    EXPLORER = "https://genlayer-explorer.vercel.app"
+    NETWORK_LABEL = "Studionet"
 
 
 def deploy_contract(contract_path: Path, account):
-    """Deploy contract to Bradbury and return address."""
-    chain = testnet_bradbury
-    client = GenLayerClient(chain, account)
+    """Deploy contract to the selected network and return address."""
+    client = GenLayerClient(CHAIN, account)
 
     code = contract_path.read_text(encoding="utf-8")
 
-    print("Deploying contract to Bradbury (chain id 4221)...")
+    print(f"Deploying contract to {NETWORK_LABEL} (chain id {CHAIN_ID})...")
     tx_hash = client.deploy_contract(code=code, account=account)
     print(f"Transaction hash: {tx_hash}")
     print(f"Explorer: {EXPLORER}/tx/{tx_hash}")
@@ -156,17 +168,24 @@ def _write_deploy_outputs(root: Path, addr: str):
     print(f"Wrote contract address to {env_path}")
 
     deployed_ts = f'''/**
- * Deployed AuditLens contract on GenLayer Bradbury Testnet (chain id 4221).
+ * Deployed AuditLens contract on GenLayer.
  *
  * This is a COMMITTED, build-time constant (not gitignored) so that static
  * deployments (Vercel/Netlify) work without requiring a `.env` file to be
- * present in the repo. `deploy.mjs` / `scripts/deploy.py` rewrites this file
+ * present in the repo. `deploy.mjs` / `scripts/deploy.py` rewrite this file
  * after a successful deploy, so the address baked into the build always matches
  * the live contract.
+ *
+ * NETWORK: "studionet" | "bradbury"
+ *   - studionet: hosted simulator (chain id 61999), built-in faucet, exposes
+ *     full validator stderr for debugging. Best for demos.
+ *   - bradbury:  real validators (chain id 4221). Slower finalization.
  */
+export const DEPLOYED_NETWORK = "{NETWORK}" as "studionet" | "bradbury";
 export const DEPLOYED_CONTRACT_ADDRESS = "{addr}";
-export const GENLAYER_CHAIN_ID = 4221; // Bradbury testnet
-export const EXPLORER_BASE = "https://explorer-bradbury.genlayer.com";
+export const GENLAYER_CHAIN_ID = {CHAIN_ID}; // {NETWORK_LABEL}
+export const EXPLORER_BASE = "{EXPLORER}";
+export const NETWORK_LABEL = DEPLOYED_NETWORK === "studionet" ? "Studionet" : "Bradbury Testnet";
 '''
     deployed_path = root / "frontend" / "src" / "deployed.ts"
     deployed_path.write_text(deployed_ts, encoding="utf-8")
@@ -190,7 +209,7 @@ def main():
         raise FileNotFoundError(f"Contract not found: {contract_path}")
 
     print("=" * 60)
-    print("AuditLens Deployment -> Bradbury Testnet (4221)")
+    print(f"AuditLens Deployment -> {NETWORK_LABEL} ({CHAIN_ID})")
     print("=" * 60)
 
     account = load_account()
